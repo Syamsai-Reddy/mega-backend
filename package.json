@@ -1,0 +1,23 @@
+{
+  "name": "mega-backend",
+  "version": "1.0.0",
+  "description": "a complete backend application",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Syamsai-Reddy/mega-backend.git"
+  },
+  "keywords": [
+    "javascript",
+    "backend"
+  ],
+  "author": "syamsai reddy",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Syamsai-Reddy/mega-backend/issues"
+  },
+  "homepage": "https://github.com/Syamsai-Reddy/mega-backend#readme"
+}
