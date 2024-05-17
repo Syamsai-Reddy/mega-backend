@@ -10,19 +10,18 @@ cloudinary.config({
 
 
 const uplodeOnCloudinary = async(localFilePath)=>{
-    try{
-
-        if(!localFilePath)return null
-        //uplode localfile on cloudinary
-        const response = await cloudinary.uploader.upload(
-            localfile,{
-                resource_type:"auto"
-            }
-        )
-        //file uploded successfully
-        console.log("Sucessfully ,File Uploded On Cloudinary ",response.url);
+    try {
+        if (!localFilePath) return null
+        //upload the file on cloudinary
+        const response = await cloudinary.uploader.upload(localFilePath, {
+            resource_type: "auto"
+        })
+        // file has been uploaded successfull
+        //console.log("file is uploaded on cloudinary ", response.url);
+        //fs.unlinkSync(localFilePath)                                     //not working for me see once
         return response;
-    }
+
+    } 
     catch(error){
         fs.unlinkSync(localFilePath)//remove the locally saved file as the uplode operation get failed
         return null;
