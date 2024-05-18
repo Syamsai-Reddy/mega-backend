@@ -4,6 +4,25 @@ import {User} from "../models/user.model.js"
 import {uplodeOnCloudinary} from "../utils/cloudinary.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import jwt from "jsonwebtoken"
+import { application } from "express";
+import mongoose from "mongoose";
+
+
+//delete file on cloudinary
+const deleteURLonCloudinary = async(url) =>{
+    cloudinary.uploader.destroy(publicId, function(error, result) {
+      if (error) {
+        throw new ApiError(500 ,"Error while deleting file:" , error )
+      } 
+
+      return res
+      .status(200)
+      .json(
+        new ApiResponse(200 , result , "File deleted successfull")
+      )
+    });
+  }
+
 
 //generate access and refresh token
 const generateAccessAndRefreshToken = async(userId)=>{
@@ -226,11 +245,261 @@ const refreshAccessToken = asyncHandler(async(req,res)=>{
     }
 })
 
+const changeCurrentPassword = asyncHandler(async(req,res)=>{
+    const {oldPassword , newPassword} = req.body;
+    
+    if([oldPassword , newPassword].some((field)=>field?.trim() === "")){
+        throw new ApiError(400,"All Fields Are Required")
+    }
+
+    const user = await User.findById(req.user?._id)
+    const isPasswordCorrect =await user.isPasswordCorrect(oldPassword);
+    if(!isPasswordCorrect){
+        throw new ApiError(400, "Invalid old Password")
+    }
+
+    user.password=newPassword;
+    await user.save({validateBeforeSave:false})
+    return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"))
+})
+
+const getCurrentUser = asyncHandler(async(req, res) => {
+    return res
+    .status(200)
+    .json(new ApiResponse(
+        200,
+        req.user,
+        "User fetched successfully"
+    ))
+})
+
+const updateAccountDetails = asyncHandler(async(req, res) => {
+    const {fullName, email} = req.body
+
+    if (!fullName || !email) {
+        throw new ApiError(400, "All fields are required")
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullName,
+                email: email
+            }
+        },
+        {new: true}
+        
+    ).select("-password")
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"))
+});
+
+const updateUserAvatar = asyncHandler(async(req, res) => {
+    const avatarLocalPath = req.file?.path
+
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar file is missing")
+    }
+
+     //TODO: delete old image - assignment        //check it
+    const url = User.file?.url;
+    const deleteURLONCloudinary = deleteURLonCloudinary(url);
+
+   
+
+    const avatar = await uplodeOnCloudinary(avatarLocalPath)
+
+    if (!avatar.url) {
+        throw new ApiError(400, "Error while uploading on avatar")
+        
+    }
+
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set:{
+                avatar: avatar.url
+            }
+        },
+        {new: true}
+    ).select("-password")
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, user, "Avatar image updated successfully")
+    )
+})
+
+
+const updateUserCoverImage = asyncHandler(async(req, res) => {
+    const coverImageLocalPath = req.file?.path
+
+    if (!coverImageLocalPath) {
+        throw new ApiError(400, "Cover image file is missing")
+    }
+
+    //TODO: delete old image - assignment
+
+
+    const coverImage = await uplodeOnCloudinary(coverImageLocalPath)
+
+    if (!coverImage.url) {
+        throw new ApiError(400, "Error while uploading on avatar")
+        
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set:{
+                coverImage: coverImage.url
+            }
+        },
+        {new: true}
+    ).select("-password")
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, user, "Cover image updated successfully")
+    )
+})
+
+
+//getting user details
+const getUserChannelProfile = asyncHandler(async(req,res)=>{
+    const {username} = req.params;
+
+    if (!username?.trim()) {
+        throw new ApiError(400, "username is missing")
+    }
+    const channel = await User.aggregate([
+        {
+            $match:{
+                    username:username?.toLowerCase()
+                }
+        },
+        {
+            $lookup:{
+                from:"subscriptions",         //why s in last means in database given names are stored in lowercase with additional adding of s term 
+                localField:"_id",            //search based on what we have given in datafiles/documents in databases
+                foreignField:"channel",      //telling what term we ave to search
+                as:"subscribers"             //our wish we'll give any name
+            }
+        },
+        {
+            $lookup:{
+                from:"subscriptions",         //why s in last means in database given names are stored in lowercase with additional adding of s term 
+                localField:"_id",            //search based on what we have given in datafiles/documents in databases
+                foreignField:"subscriber",      //telling what term we ave to search
+                as:"subscribedTo"             //our wish we'll give any name
+            }
+        },
+        {
+            $addFields:{
+                subscriberCount:{
+                    $size:"$subscribers"          //here y $ symbol is bcoz it is a field
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {                   // tells about wethere we are subscribed our self or not
+                    $cond: {                      // in this if if cond is exicuted then . then and else are  moreover like try and catch
+                        if: {$in: [req.user?._id, "$subscribers.subscriber"]},  
+                        then: true,
+                        else: false
+                    }
+                }
+            },
+        },
+        {
+            $project:{
+                fullName: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1
+            }
+        }
+    ])
+    
+})
+
+const getWatchHistory = asyncHandler(async(req,res)=>{
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id)  //wrote in notebook with a tag of interview-2 about why we are using new mongoose like this 
+            }
+        },{
+            $lookup:{
+                from: "videos",       //s becoz of mangodb rules(of storage of user data )
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline:[                //this sub-pipline is becz of finding owner of videos that are in our watchHistory
+                    {
+                        $lookup:{
+                            $lookup: {
+                                from: "users",
+                                localField: "owner",
+                                foreignField: "_id",
+                                as: "owner",
+                                pipeline:[   //this sub-sub-pipline is becz of getting that owner details 
+                                    {
+                                        $project: {   
+                                            fullName: 1,
+                                            username: 1,
+                                            avatar: 1
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        $addFields:{      //this one ios becz of easyness of frontend dev . here we are doing reduction of loop for taking owner data . for that we are doing this , so frontend dev / user will get easy to axcess for owner value by just using dot(.) operator
+                            owner:{
+                                $first: "$owner" 
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+            user[0].watchHistory,
+            "Watch history fetched successfully"
+        )
+    )
+})
 
 
 export {
     registerUser,
     loginUser,
     logoutUser,
-    refreshAccessToken
+    refreshAccessToken,
+    changeCurrentPassword,
+    getCurrentUser,
+    updateAccountDetails,
+    updateUserAvatar,
+    updateUserCoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 }
